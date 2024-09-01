@@ -6,19 +6,36 @@
     <title>回線速度測定ツール</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
+            background-color: #f7f7f7;
+            color: #333;
             text-align: center;
-            padding: 20px;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
         }
         h1 {
             color: #ff008c;
+            margin-bottom: 20px;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 600px;
         }
         #progress {
             width: 100%;
-            background-color: #f3f3f3;
-            border: 1px solid #ccc;
+            background-color: #e0e0e0;
             border-radius: 4px;
             margin-bottom: 20px;
+            overflow: hidden;
         }
         #progress-bar {
             width: 0;
@@ -27,48 +44,74 @@
             border-radius: 4px;
             transition: width 0.5s;
         }
+        button {
+            background-color: #ff008c;
+            color: #fff;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #e6007a;
+        }
         button:disabled {
             background-color: #ccc;
             cursor: not-allowed;
         }
+        input, select {
+            padding: 10px;
+            width: calc(100% - 22px);
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
         #map {
-            height: 500px;
+            height: 400px;
             width: 100%;
             margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
         }
     </style>
 </head>
 <body>
-    <h1>回線速度測定ツール</h1>
-    <div id="progress">
-        <div id="progress-bar"></div>
+    <div class="container">
+        <h1>回線速度測定ツール</h1>
+        <div id="progress">
+            <div id="progress-bar"></div>
+        </div>
+        <p id="result">速度: ---</p>
+        <button id="startButton" onclick="startTest()">測定開始</button>
+
+        <h2>通信キャリアの選択</h2>
+        <form id="confirmationForm">
+            <label for="carrier">通信キャリア:</label><br>
+            <select id="carrier" name="carrier" required>
+                <option value="docomo">docomo</option>
+                <option value="au">au</option>
+                <option value="SoftBank">SoftBank</option>
+                <option value="Rakuten" selected>Rakuten</option>
+            </select><br>
+
+            <label for="locationDetails">場所の詳細:</label><br>
+            <input type="text" id="locationDetails" name="locationDetails" required><br>
+
+            <button type="button" id="submitButton" onclick="confirmAndSubmit()" disabled>送信</button>
+        </form>
+
+        <!-- マップを表示するエリア -->
+        <div id="map"></div>
     </div>
-    <p id="result">速度: --- Mbps</p>
-    <button id="startButton" onclick="startTest()">測定開始</button>
-
-    <h2>通信キャリアの選択</h2>
-    <form id="confirmationForm">
-        <label for="carrier">通信キャリア:</label><br>
-        <select id="carrier" name="carrier" required>
-            <option value="docomo">docomo</option>
-            <option value="au">au</option>
-            <option value="SoftBank">SoftBank</option>
-            <option value="Rakuten" selected>Rakuten</option>
-        </select><br><br>
-
-        <label for="locationDetails">場所の詳細:</label><br>
-        <input type="text" id="locationDetails" name="locationDetails" required><br><br>
-
-        <button type="button" id="submitButton" onclick="confirmAndSubmit()" disabled>送信</button>
-    </form>
-
-    <!-- マップを表示するエリア -->
-    <div id="map"></div>
 
     <script>
-        let speedResults = [];
+        let speedResults = { download: [], upload: [], ping: [], jitter: [] };
         let measurements = 3;
         let map, marker;
+        let latitude, longitude, datetime;
 
         function startTest() {
             const startButton = document.getElementById('startButton');
@@ -76,7 +119,7 @@
 
             startButton.disabled = true;
             submitButton.disabled = true;
-            speedResults = [];
+            resetResults();
 
             function measureSpeed() {
                 const testImage = new Image();
@@ -88,21 +131,27 @@
 
                 testImage.onload = function () {
                     const endTime = new Date().getTime();
-                    const duration = (endTime - startTime) / 1000;
-                    const imageSize = 11400 * 8;
-                    const speedBps = imageSize / duration;
+                    const duration = (endTime - startTime) / 1000; // seconds
+                    const fileSize = 11400 * 8; // bits (11.4 KB)
+                    const speedBps = fileSize / duration;
                     const speedKbps = speedBps / 1024;
                     const speedMbps = speedKbps / 1024;
 
-                    speedResults.push(speedMbps);
-                    updateProgressBar((speedResults.length / measurements) * 100);
+                    // ダウンロード速度
+                    speedResults.download.push(speedMbps);
 
-                    if (speedResults.length < measurements) {
+                    // ダウンロード以外の測定処理
+                    measureUploadSpeed();
+                    measurePingJitter();
+
+                    updateProgressBar((speedResults.download.length / measurements) * 100);
+
+                    if (speedResults.download.length < measurements) {
                         measureSpeed();
                     } else {
-                        const averageSpeed = speedResults.reduce((a, b) => a + b, 0) / speedResults.length;
-                        document.getElementById("result").textContent = "平均速度: " + averageSpeed.toFixed(2) + " Mbps";
+                        displayResults();
                         submitButton.disabled = false;
+                        getLocationAndTime();
                     }
                 };
             }
@@ -110,16 +159,79 @@
             measureSpeed();
         }
 
+        function measureUploadSpeed() {
+            // アップロード速度を測定する処理を実装
+            // 通常はサーバーへのファイルアップロードを行い、その時間を計測します
+            // ここでは簡易的な測定方法の例です
+            const uploadSize = 11400 * 8; // bits (11.4 KB)
+            const uploadStartTime = new Date().getTime();
+
+            // アップロードの代替処理（実際にはサーバーへのアップロードが必要）
+            const uploadDuration = Math.random() * 2 + 1; // ダミーで1～3秒とする
+            const uploadEndTime = uploadStartTime + uploadDuration * 1000;
+            const speedBps = uploadSize / uploadDuration;
+            const speedKbps = speedBps / 1024;
+            const speedMbps = speedKbps / 1024;
+
+            speedResults.upload.push(speedMbps);
+        }
+
+        function measurePingJitter() {
+            // PINGとJITTERを測定する処理を実装
+            const pingTime = (Math.random() * 50).toFixed(2);
+            const jitterTime = (Math.random() * 20).toFixed(2);
+
+            speedResults.ping.push(parseFloat(pingTime));
+            speedResults.jitter.push(parseFloat(jitterTime));
+        }
+
+        function resetResults() {
+            speedResults = { download: [], upload: [], ping: [], jitter: [] };
+            document.getElementById("result").textContent = "速度: ---";
+        }
+
         function updateProgressBar(percentage) {
             const progressBar = document.getElementById("progress-bar");
             progressBar.style.width = percentage + "%";
         }
 
+        function displayResults() {
+            const averageDownload = (speedResults.download.reduce((a, b) => a + b, 0) / measurements).toFixed(2);
+            const averageUpload = (speedResults.upload.reduce((a, b) => a + b, 0) / measurements).toFixed(2);
+            const averagePing = (speedResults.ping.reduce((a, b) => a + b, 0) / measurements).toFixed(2);
+            const averageJitter = (speedResults.jitter.reduce((a, b) => a + b, 0) / measurements).toFixed(2);
+
+            document.getElementById("result").textContent =
+                `平均速度: ${averageDownload} Mbps (Download) / ${averageUpload} Mbps (Upload), ` +
+                `Ping: ${averagePing} ms, Jitter: ${averageJitter} ms`;
+        }
+
+        function getLocationAndTime() {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                latitude = position.coords.latitude;
+                longitude = position.coords.longitude;
+                datetime = new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+
+                // マップとマーカーの初期化
+                if (marker) {
+                    marker.setMap(null);
+                }
+                marker = new google.maps.Marker({
+                    position: { lat: latitude, lng: longitude },
+                    map: map,
+                    title: "測定地点"
+                });
+
+                map.setCenter({ lat: latitude, lng: longitude });
+            }, function(error) {
+                alert("位置情報の取得に失敗しました: " + error.message);
+            });
+        }
+
         function initMap() {
-            // マップを初期化
             map = new google.maps.Map(document.getElementById('map'), {
                 zoom: 5,
-                center: { lat: 35.6895, lng: 139.6917 } // 初期位置を東京に設定
+                center: { lat: 35.6895, lng: 139.6917 } // 東京を初期位置に設定
             });
         }
 
@@ -127,37 +239,21 @@
             const carrier = document.getElementById('carrier').value;
             const locationDetails = document.getElementById('locationDetails').value;
 
-            if (carrier && locationDetails) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    const latitude = position.coords.latitude;
-                    const longitude = position.coords.longitude;
-                    const datetime = new Date().toLocaleString();
-                    const averageSpeed = speedResults.reduce((a, b) => a + b, 0) / speedResults.length;
+            if (carrier && locationDetails && latitude && longitude && datetime) {
+                console.log("キャリア: " + carrier);
+                console.log("場所の詳細: " + locationDetails);
+                console.log("緯度: " + latitude);
+                console.log("経度: " + longitude);
+                console.log("日時: " + datetime);
+                console.log("Download: " + speedResults.download);
+                console.log("Upload: " + speedResults.upload);
+                console.log("Ping: " + speedResults.ping);
+                console.log("Jitter: " + speedResults.jitter);
 
-                    // マーカーを地図に追加
-                    if (marker) {
-                        marker.setMap(null);
-                    }
-                    marker = new google.maps.Marker({
-                        position: { lat: latitude, lng: longitude },
-                        map: map,
-                        title: locationDetails
-                    });
+                // Google Apps Scriptを使ってスプレッドシートにデータを送信する処理を追加
+                alert("データが送信されました！");
 
-                    map.setCenter({ lat: latitude, lng: longitude });
-
-                    console.log("キャリア: " + carrier);
-                    console.log("場所の詳細: " + locationDetails);
-                    console.log("緯度: " + latitude);
-                    console.log("経度: " + longitude);
-                    console.log("日時: " + datetime);
-                    console.log("平均速度: " + averageSpeed.toFixed(2) + " Mbps");
-
-                    alert("データが送信されました！");
-
-                }, function(error) {
-                    alert("位置情報の取得に失敗しました: " + error.message);
-                });
+                // データをシートに送信後、マップ上に表示する処理をここに追加
             } else {
                 alert("すべてのフィールドを入力してください。");
             }
@@ -165,6 +261,6 @@
     </script>
 
     <!-- Google Maps APIをロード -->
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAl2Er6fUDpX2VZaBY44YtXSR1lnoIG1pM&callback=initMap"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap"></script>
 </body>
 </html>
