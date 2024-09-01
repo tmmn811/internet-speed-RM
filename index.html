@@ -15,42 +15,160 @@
             margin: 0; 
         }
         .container {
-            background-color: #fff;
+            text-align: center;
             padding: 20px;
+            background-color: #fff;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            max-width: 800px;
-            width: 100%;
         }
         h1 { 
             color: #ff008c; 
             font-size: 2em; 
             margin-bottom: 20px;
         }
-        #speedtest-container {
-            width: 100%;
-            height: 500px;
-            background-color: #eee;
-            border-radius: 10px;
-            overflow: hidden;
+        button { 
+            padding: 10px 20px; 
+            background-color: #ff008c; 
+            color: #fff; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+        }
+        button:hover { 
+            background-color: #e6007a; 
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 1.5em;
+            color: #333;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>回線速度測定ツール</h1>
-    <!-- 埋め込み用のプラグイン -->
-    <div id="speedtest-container">
-        <iframe src="https://xn--zcka2bjc9dzp.jp/web-plugin/" 
-                width="100%" 
-                height="100%" 
-                frameborder="0" 
-                scrolling="no">
-        </iframe>
-    </div>
+    <h1>回線速度測定</h1>
+    <button onclick="startSpeedTest()">測定開始</button>
+    <div id="result"></div>
 </div>
+
+<script>
+function startSpeedTest() {
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerHTML = "測定中...";
+
+    measureDownloadSpeed().then(downloadSpeed => {
+        return measureUploadSpeed().then(uploadSpeed => {
+            return measurePing().then(pingData => {
+                const jitter = calculateJitter(pingData.times);
+                resultDiv.innerHTML = `
+                    <p>ダウンロード速度: ${downloadSpeed.toFixed(2)} Mbps</p>
+                    <p>アップロード速度: ${uploadSpeed.toFixed(2)} Mbps</p>
+                    <p>Ping: ${pingData.average.toFixed(2)} ms</p>
+                    <p>Jitter: ${jitter.toFixed(2)} ms</p>
+                `;
+            });
+        });
+    }).catch(error => {
+        resultDiv.innerHTML = `エラー: ${error.message}`;
+    });
+}
+
+function measureDownloadSpeed() {
+    return new Promise((resolve, reject) => {
+        const imageUrl = 'https://www.google.com/images/phd/px.gif'; // 小さな画像ファイル
+        const startTime = new Date().getTime();
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', imageUrl + '?cache=' + startTime, true);
+        xhr.responseType = 'blob';
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                const endTime = new Date().getTime();
+                const duration = (endTime - startTime) / 1000; // 秒
+                const fileSize = xhr.response.size * 8; // ビットに変換
+                const speedBps = fileSize / duration;
+                const speedMbps = speedBps / (1024 * 1024);
+                resolve(speedMbps);
+            } else {
+                reject(new Error("ダウンロード速度測定失敗"));
+            }
+        };
+        xhr.onerror = function () {
+            reject(new Error("ダウンロード速度測定エラー"));
+        };
+        xhr.send();
+    });
+}
+
+function measureUploadSpeed() {
+    return new Promise((resolve, reject) => {
+        const uploadData = new Blob([new ArrayBuffer(10 * 1024 * 1024)]); // 10MBのデータ
+        const startTime = new Date().getTime();
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'https://postman-echo.com/post', true); // テスト用アップロード先
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                const endTime = new Date().getTime();
+                const duration = (endTime - startTime) / 1000; // 秒
+                const speedBps = uploadData.size * 8 / duration;
+                const speedMbps = speedBps / (1024 * 1024);
+                resolve(speedMbps);
+            } else {
+                reject(new Error("アップロード速度測定失敗"));
+            }
+        };
+        xhr.onerror = function () {
+            reject(new Error("アップロード速度測定エラー"));
+        };
+        xhr.send(uploadData);
+    });
+}
+
+function measurePing() {
+    return new Promise((resolve, reject) => {
+        const times = [];
+        const maxPingTests = 5;
+        let completedPingTests = 0;
+
+        function pingTest() {
+            const startTime = new Date().getTime();
+            fetch('https://www.google.com', { mode: 'no-cors' })
+                .then(() => {
+                    const endTime = new Date().getTime();
+                    times.push(endTime - startTime);
+                    completedPingTests++;
+                    if (completedPingTests < maxPingTests) {
+                        pingTest();
+                    } else {
+                        const averagePing = times.reduce((a, b) => a + b, 0) / times.length;
+                        resolve({ average: averagePing, times });
+                    }
+                })
+                .catch(() => {
+                    times.push(null);
+                    completedPingTests++;
+                    if (completedPingTests < maxPingTests) {
+                        pingTest();
+                    } else {
+                        reject(new Error("Ping測定失敗"));
+                    }
+                });
+        }
+
+        pingTest();
+    });
+}
+
+function calculateJitter(times) {
+    const diffs = [];
+    for (let i = 1; i < times.length; i++) {
+        if (times[i] !== null && times[i-1] !== null) {
+            diffs.push(Math.abs(times[i] - times[i-1]));
+        }
+    }
+    return diffs.reduce((a, b) => a + b, 0) / diffs.length;
+}
+</script>
 
 </body>
 </html>
