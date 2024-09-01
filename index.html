@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>回線速度測定ツール</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        h1 {
+            color: #ff008c; /* タイトルの色を指定 */
+        }
+        #progress {
+            width: 100%;
+            background-color: #f3f3f3;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        #progress-bar {
+            width: 0;
+            height: 30px;
+            background-color: #ff008c; /* プログレスバーの色を指定 */
+            border-radius: 4px;
+            transition: width 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <h1>回線速度測定ツール</h1>
+    <div id="progress">
+        <div id="progress-bar"></div>
+    </div>
+    <p id="result"></p>
+    <button onclick="startTest()">測定開始</button>
+
+    <h2>通信キャリアの選択</h2>
+    <form id="confirmationForm">
+        <label for="carrier">通信キャリア:</label><br>
+        <select id="carrier" name="carrier" required>
+            <option value="docomo">docomo</option>
+            <option value="au">au</option>
+            <option value="SoftBank">SoftBank</option>
+            <option value="Rakuten">Rakuten</option>
+        </select><br><br>
+
+        <label for="email">メールアドレス:</label><br>
+        <input type="email" id="email" name="email" required><br><br>
+
+        <label for="locationDetails">場所の詳細:</label><br>
+        <input type="text" id="locationDetails" name="locationDetails" required><br><br>
+
+        <button type="button" onclick="confirmAndSubmit()">送信</button>
+    </form>
+
+    <script>
+        function startTest() {
+            const testImage = new Image();
+            const startTime = new Date().getTime();
+            const cacheBuster = "?nnn=" + startTime;
+            const testUrl = "https://www.google.com/images/phd/px.gif" + cacheBuster;
+
+            testImage.src = testUrl;
+
+            testImage.onload = function () {
+                const endTime = new Date().getTime();
+                const duration = (endTime - startTime) / 1000;
+                const imageSize = 11400 * 8; // 画像サイズをビットに換算
+                const speedBps = imageSize / duration;
+                const speedKbps = speedBps / 1024;
+                const speedMbps = speedKbps / 1024;
+
+                document.getElementById("result").textContent = "速度: " + speedMbps.toFixed(2) + " Mbps";
+                updateProgressBar(100);
+            };
+
+            updateProgressBar(50);
+        }
+
+        function updateProgressBar(percentage) {
+            const progressBar = document.getElementById("progress-bar");
+            progressBar.style.width = percentage + "%";
+        }
+
+        function confirmAndSubmit() {
+            const carrier = document.getElementById('carrier').value;
+            const email = document.getElementById('email').value;
+            const locationDetails = document.getElementById('locationDetails').value;
+
+            if (carrier && email && locationDetails) {
+                console.log("キャリア: " + carrier);
+                alert("データが送信されました！");
+            } else {
+                alert("すべてのフィールドを入力してください。");
+            }
+        }
+    </script>
+</body>
+</html>
