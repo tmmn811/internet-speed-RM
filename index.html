@@ -11,7 +11,7 @@
             padding: 20px;
         }
         h1 {
-            color: #ff008c; /* タイトルの色を指定 */
+            color: #ff008c;
         }
         #progress {
             width: 100%;
@@ -23,9 +23,18 @@
         #progress-bar {
             width: 0;
             height: 30px;
-            background-color: #ff008c; /* プログレスバーの色を指定 */
+            background-color: #ff008c;
             border-radius: 4px;
             transition: width 0.5s;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #map {
+            height: 500px;
+            width: 100%;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -34,8 +43,8 @@
     <div id="progress">
         <div id="progress-bar"></div>
     </div>
-    <p id="result"></p>
-    <button onclick="startTest()">測定開始</button>
+    <p id="result">速度: --- Mbps</p>
+    <button id="startButton" onclick="startTest()">測定開始</button>
 
     <h2>通信キャリアの選択</h2>
     <form id="confirmationForm">
@@ -44,40 +53,61 @@
             <option value="docomo">docomo</option>
             <option value="au">au</option>
             <option value="SoftBank">SoftBank</option>
-            <option value="Rakuten">Rakuten</option>
+            <option value="Rakuten" selected>Rakuten</option>
         </select><br><br>
-
-        <label for="email">メールアドレス:</label><br>
-        <input type="email" id="email" name="email" required><br><br>
 
         <label for="locationDetails">場所の詳細:</label><br>
         <input type="text" id="locationDetails" name="locationDetails" required><br><br>
 
-        <button type="button" onclick="confirmAndSubmit()">送信</button>
+        <button type="button" id="submitButton" onclick="confirmAndSubmit()" disabled>送信</button>
     </form>
 
+    <!-- マップを表示するエリア -->
+    <div id="map"></div>
+
     <script>
+        let speedResults = [];
+        let measurements = 3;
+        let map, marker;
+
         function startTest() {
-            const testImage = new Image();
-            const startTime = new Date().getTime();
-            const cacheBuster = "?nnn=" + startTime;
-            const testUrl = "https://www.google.com/images/phd/px.gif" + cacheBuster;
+            const startButton = document.getElementById('startButton');
+            const submitButton = document.getElementById('submitButton');
 
-            testImage.src = testUrl;
+            startButton.disabled = true;
+            submitButton.disabled = true;
+            speedResults = [];
 
-            testImage.onload = function () {
-                const endTime = new Date().getTime();
-                const duration = (endTime - startTime) / 1000;
-                const imageSize = 11400 * 8; // 画像サイズをビットに換算
-                const speedBps = imageSize / duration;
-                const speedKbps = speedBps / 1024;
-                const speedMbps = speedKbps / 1024;
+            function measureSpeed() {
+                const testImage = new Image();
+                const startTime = new Date().getTime();
+                const cacheBuster = "?nnn=" + startTime;
+                const testUrl = "https://www.google.com/images/phd/px.gif" + cacheBuster;
 
-                document.getElementById("result").textContent = "速度: " + speedMbps.toFixed(2) + " Mbps";
-                updateProgressBar(100);
-            };
+                testImage.src = testUrl;
 
-            updateProgressBar(50);
+                testImage.onload = function () {
+                    const endTime = new Date().getTime();
+                    const duration = (endTime - startTime) / 1000;
+                    const imageSize = 11400 * 8;
+                    const speedBps = imageSize / duration;
+                    const speedKbps = speedBps / 1024;
+                    const speedMbps = speedKbps / 1024;
+
+                    speedResults.push(speedMbps);
+                    updateProgressBar((speedResults.length / measurements) * 100);
+
+                    if (speedResults.length < measurements) {
+                        measureSpeed();
+                    } else {
+                        const averageSpeed = speedResults.reduce((a, b) => a + b, 0) / speedResults.length;
+                        document.getElementById("result").textContent = "平均速度: " + averageSpeed.toFixed(2) + " Mbps";
+                        submitButton.disabled = false;
+                    }
+                };
+            }
+
+            measureSpeed();
         }
 
         function updateProgressBar(percentage) {
@@ -85,18 +115,56 @@
             progressBar.style.width = percentage + "%";
         }
 
+        function initMap() {
+            // マップを初期化
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 5,
+                center: { lat: 35.6895, lng: 139.6917 } // 初期位置を東京に設定
+            });
+        }
+
         function confirmAndSubmit() {
             const carrier = document.getElementById('carrier').value;
-            const email = document.getElementById('email').value;
             const locationDetails = document.getElementById('locationDetails').value;
 
-            if (carrier && email && locationDetails) {
-                console.log("キャリア: " + carrier);
-                alert("データが送信されました！");
+            if (carrier && locationDetails) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    const latitude = position.coords.latitude;
+                    const longitude = position.coords.longitude;
+                    const datetime = new Date().toLocaleString();
+                    const averageSpeed = speedResults.reduce((a, b) => a + b, 0) / speedResults.length;
+
+                    // マーカーを地図に追加
+                    if (marker) {
+                        marker.setMap(null);
+                    }
+                    marker = new google.maps.Marker({
+                        position: { lat: latitude, lng: longitude },
+                        map: map,
+                        title: locationDetails
+                    });
+
+                    map.setCenter({ lat: latitude, lng: longitude });
+
+                    console.log("キャリア: " + carrier);
+                    console.log("場所の詳細: " + locationDetails);
+                    console.log("緯度: " + latitude);
+                    console.log("経度: " + longitude);
+                    console.log("日時: " + datetime);
+                    console.log("平均速度: " + averageSpeed.toFixed(2) + " Mbps");
+
+                    alert("データが送信されました！");
+
+                }, function(error) {
+                    alert("位置情報の取得に失敗しました: " + error.message);
+                });
             } else {
                 alert("すべてのフィールドを入力してください。");
             }
         }
     </script>
+
+    <!-- Google Maps APIをロード -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap"></script>
 </body>
 </html>
